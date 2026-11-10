@@ -400,7 +400,7 @@
           br.holding = null;
           br.pocketed = true;
           br.face = 'sly';
-          G.floaters.push({ text: '슬쩍!', x: clamp(br.x, 12, W - 12), y: CCTV.y + 6, life: 0.8, color: '#ffffff', size: 6, bold: true });
+          G.floaters.push({ text: '슬쩍!', x: clamp(br.x, 34, W - 14), y: CCTV.y + 6, life: 0.8, color: '#ffffff', size: 6, bold: true });
           if (!G.thiefTold) {
             G.thiefTold = true;
             showBanner('물건을 숨겼어요! CCTV에서 눌러 잡아요', '#ff8f8f', 2.4);
@@ -474,7 +474,7 @@
       G.shake = Math.max(G.shake, 0.15);
       Sound.wrong();
       const bp = bubblePos(c);
-      G.floaters.push({ text: '그거 아니에요!', x: bp.cx, y: bp.y - 6, life: 0.9, color: '#ff6b6b', size: 7 });
+      G.floaters.push({ text: '그거 아니에요!', x: bp.cx, y: bp.y + 14, life: 0.9, color: '#ff6b6b', size: 7 });
       return;
     }
     o.got[i] = true;
@@ -496,7 +496,7 @@
     G.score += pts;
     G.served++;
     const bp = bubblePos(c);
-    G.floaters.push({ text: '+' + pts, x: bp.cx, y: bp.y - 4, life: 1, color: '#ffd84d', size: 9, bold: true });
+    G.floaters.push({ text: '+' + pts, x: bp.cx, y: bp.y + 14, life: 1, color: '#ffd84d', size: 9, bold: true });
     for (let k = 0; k < 6; k++) {
       G.coins.push({ x: bp.cx, y: bp.y + 6, vx: rnd(-40, 40), vy: rnd(-70, -30), life: 0.8 });
     }
@@ -745,7 +745,7 @@
   function drawBanner() {
     if (!G.banner) return;
     const a = clamp(G.banner.t / 0.25, 0, 1);
-    const y = 34;
+    const y = counterTop + 10;   // 계산대 앞면(CCTV를 가리지 않게)
     b.globalAlpha = a;
     box(14, y - 8, W - 28, 16, '#1b1626', '#fff');
     b.globalAlpha = 1;
@@ -904,10 +904,10 @@
       // 계산대(손님 하반신 가리기)
       b.drawImage(bgCache, 0, counterTop, W, sceneB - counterTop, 0, counterTop, W, sceneB - counterTop);
       if (G.queue[0]) drawBubble(G.queue[0]);
-      if (G.combo >= 2 && G.state === 'play') {
+      if (G.combo >= 2 && G.state === 'play' && !G.banner) {
         text('콤보 ×' + G.combo, W / 2, counterTop + 15, 7.5, '#ff8fc8', 'center', { bold: true, stroke: OUTLINE, strokeW: 2 });
       }
-      if (G.state === 'play' && G.served === 0 && G.combo < 2 && G.t < 40 && G.queue[0] && G.queue[0].order) {
+      if (G.state === 'play' && !G.banner && G.served === 0 && G.combo < 2 && G.t < 40 && G.queue[0] && G.queue[0].order) {
         text('말풍선 속 상품을 아래에서 눌러요!', W / 2, counterTop + 15, 6.5, '#ffffff', 'center', { bold: true, maxW: W - 8 });
       }
       drawShelf();
