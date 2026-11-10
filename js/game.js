@@ -10,6 +10,7 @@
   const DOOR_X = 128;
   const UNLOCK_AT = [0, 0, 0, 0, 25, 50, 75, 100]; // 상품별 입고 시각(초)
   const FONT = "'Galmuri11', sans-serif";
+  const CCTV = { x: 3, y: 16, w: 138, h: 37 };   // 매장 안을 비추는 화면
 
   const screen = document.getElementById('screen');
   const sctx = screen.getContext('2d');
@@ -29,7 +30,7 @@
   const G = {
     state: 'title',   // title | play | pause | over
     t: 0, score: 0, hearts: MAX_HEARTS, combo: 0, bestCombo: 0, served: 0, lost: 0,
-    queue: [], leaving: [], spawnT: 1, unlocked: 4,
+    queue: [], leaving: [], browsers: [], spawnT: 1, unlocked: 4, caught: 0, stolen: 0,
     fly: [], floaters: [], coins: [], banner: null, shake: 0, flash: {},
     door: 0, best: parseInt(store.get('pixelmart.best', '0'), 10) || 0,
     newBest: false, cleared: false, endT: 0, anim: 0, round: 0,
@@ -119,16 +120,30 @@
     const R = (x, y, w, h, col) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
     // 벽
     R(0, 14, W, counterTop - 14, '#f2e6cc');
-    for (let y = 22; y < counterTop; y += 4) R(0, y, W, 1, '#ead9b8');
-    // 천장 띠와 형광등
-    R(0, 14, W, 6, '#26a69a');
-    R(0, 19, W, 1, '#1b7f76');
-    R(56, 15, 22, 2, '#fffbe6'); R(90, 15, 22, 2, '#fffbe6');
-    // 창문 틀(하늘은 매 프레임 그림)
-    R(5, 25, 42, 40, '#5b5466');
-    R(6, 26, 40, 38, '#000');
+    for (let y = 60; y < counterTop; y += 4) R(0, y, W, 1, '#ead9b8');
+    // CCTV 화면(위쪽): 틀과 매장 안 모습
+    R(0, 14, W, 42, '#26a69a');
+    R(0, 55, W, 1, '#1b7f76');
+    R(CCTV.x - 2, CCTV.y - 2, CCTV.w + 4, CCTV.h + 4, '#2b2f38');
+    R(CCTV.x, CCTV.y, CCTV.w, CCTV.h, '#14332c');
+    R(CCTV.x, CCTV.y + 3, CCTV.w, 16, '#1f4a40');
+    {
+      let sd = 3;
+      const r2 = () => { sd = (sd * 9301 + 49297) % 233280; return sd / 233280; };
+      const muted = ['#7a3b37', '#7d6a2c', '#2f5a8a', '#2f7a52', '#8a4f66', '#86552a'];
+      for (const sy of [CCTV.y + 4, CCTV.y + 12]) {
+        for (let x = CCTV.x + 2; x < CCTV.x + CCTV.w - 12; x += 4) {
+          const h = 3 + Math.floor(r2() * 4);
+          R(x, sy + 7 - h, 3, h, muted[Math.floor(r2() * muted.length)]);
+        }
+        R(CCTV.x, sy + 7, CCTV.w - 10, 1, '#0f2620');
+      }
+    }
+    for (let x = CCTV.x; x < CCTV.x + CCTV.w; x += 12) R(x, CCTV.y + 20, 1, CCTV.h - 20, '#183d35');
+    R(CCTV.x + CCTV.w - 9, CCTV.y + 2, 9, CCTV.h - 2, '#0b1a17');   // 출입구
+    R(CCTV.x + CCTV.w - 8, CCTV.y + 3, 7, 1, '#3ddc6a');
     // 뒤쪽 진열대
-    const shelfTop = 26, shelfBot = counterTop;
+    const shelfTop = 58, shelfBot = counterTop;
     R(52, shelfTop, 58, shelfBot - shelfTop, '#c9b48f');
     R(53, shelfTop + 1, 56, shelfBot - shelfTop - 1, '#e8d7b4');
     const colors = ['#e2453c', '#f5c542', '#4f8cff', '#46c47e', '#f48fb1', '#f08a24', '#a77bff', '#ffffff', '#7a4a2b'];
@@ -147,8 +162,8 @@
       R(53, y + 10, 56, 2, '#a88f66');
     }
     // 자동문 틀
-    R(114, 26, 28, counterTop - 26, '#8a93a0');
-    R(116, 28, 24, counterTop - 28, '#2a3350');
+    R(114, 58, 28, counterTop - 58, '#8a93a0');
+    R(116, 60, 24, counterTop - 60, '#2a3350');
     // 계산대
     R(0, counterTop, W, 4, '#dfe4ea');
     R(0, counterTop, W, 1, '#ffffff');
@@ -168,6 +183,35 @@
     return c;
   }
 
+  function drawCctv() {
+    b.save();
+    b.beginPath();
+    b.rect(CCTV.x, CCTV.y, CCTV.w, CCTV.h);
+    b.clip();
+    const feet = CCTV.y + CCTV.h;
+    for (const br of G.browsers) {
+      let face = br.face;
+      const moving = Math.abs(br.tx - br.x) > 0.5;
+      const bob = moving ? Math.floor(br.walkT * 8) % 2 : 0;
+      let x = br.x;
+      if (br.state === 'caught') x += Math.floor(G.anim * 30) % 2 ? 1 : -1;
+      br.drawX = x; br.bob = bob;
+      spr(br.sprites[face] || br.sprites.normal, x - 8, feet - 26 + bob);
+    }
+    // 화면 효과: 초록빛과 줄무늬
+    b.globalAlpha = 0.12;
+    rect(CCTV.x, CCTV.y, CCTV.w, CCTV.h, '#5dffb0');
+    b.globalAlpha = 1;
+    for (let y = CCTV.y; y < feet; y += 2) rect(CCTV.x, y, CCTV.w, 1, 'rgba(0,0,0,0.16)');
+    // 손에 든 상품은 잘 보이게 마지막에 그림
+    for (const br of G.browsers) {
+      if (br.holding) spr(ITEM_SPRITES[br.holding], br.drawX + 3, feet - 16 + br.bob);
+    }
+    b.restore();
+    if (Math.floor(G.anim * 2) % 2 === 0) rect(CCTV.x + 3, CCTV.y + 2, 2, 2, '#ff3b3b');
+    text('CCTV', CCTV.x + 8, CCTV.y + 3.5, 4.5, '#9fe8c9', 'left', { bold: true });
+  }
+
   function skyColor() {
     const p = G.t / SHIFT;       // 0=22시, 1=6시
     if (p < 0.72) return '#141a3a';
@@ -178,31 +222,23 @@
   function drawStoreScene() {
     if (!bgCache) bgCache = buildBg();
     b.drawImage(bgCache, 0, 0);
-    // 창밖 하늘
-    rect(6, 26, 40, 38, skyColor());
-    if (G.t / SHIFT < 0.85) {
-      const tw = Math.floor(G.anim * 2) % 2;
-      [[10, 30], [22, 35], [36, 29], [15, 44], [41, 40], [28, 50]].forEach(([x, y], i) => {
-        if ((i + tw) % 3) rect(x, y, 1, 1, '#fff7c2');
-      });
-      rect(34, 46, 6, 6, '#fff3b0'); rect(36, 46, 4, 4, skyColor()); // 초승달
-    } else {
-      rect(18, 58, 12, 6, '#ffd27a');
-    }
-    // 길 건너 건물
-    rect(6, 54, 10, 10, '#0d1028'); rect(30, 50, 16, 14, '#0d1028');
-    rect(8, 57, 2, 2, '#ffe28a'); rect(33, 54, 2, 2, '#ffe28a'); rect(39, 58, 2, 2, '#ffe28a');
-    rect(25, 26, 1, 38, '#5b5466'); rect(6, 44, 40, 1, '#5b5466');
+    // 창밖(작은 창): 시간에 따라 하늘색
+    rect(6, 62, 40, 22, '#5b5466');
+    rect(7, 63, 38, 20, skyColor());
+    if (G.t / SHIFT < 0.85 && Math.floor(G.anim * 2) % 2) { rect(12, 66, 1, 1, '#fff7c2'); rect(30, 69, 1, 1, '#fff7c2'); }
+    rect(7, 77, 12, 6, '#0d1028'); rect(28, 74, 17, 9, '#0d1028');
+    rect(26, 63, 1, 20, '#5b5466');
+    drawCctv();
     // 자동문(열림 정도 G.door)
     const open = Math.round(G.door * 11);
-    rect(116, 28, 24, counterTop - 28, '#2a3350');
-    rect(116 - open, 28, 12, counterTop - 28, '#a9d8f0aa');
-    rect(128 + open, 28, 12, counterTop - 28, '#a9d8f0aa');
-    rect(119 - open, 32, 1, 18, '#ffffff99');
-    rect(131 + open, 32, 1, 18, '#ffffff99');
-    rect(114, 26, 2, counterTop - 26, '#8a93a0');
-    rect(140, 26, 2, counterTop - 26, '#8a93a0');
-    rect(114, 26, 28, 2, '#8a93a0');
+    rect(116, 60, 24, counterTop - 60, '#2a3350');
+    rect(116 - open, 60, 12, counterTop - 60, '#a9d8f0aa');
+    rect(128 + open, 60, 12, counterTop - 60, '#a9d8f0aa');
+    rect(119 - open, 64, 1, 18, '#ffffff99');
+    rect(131 + open, 64, 1, 18, '#ffffff99');
+    rect(114, 58, 2, counterTop - 58, '#8a93a0');
+    rect(140, 58, 2, counterTop - 58, '#8a93a0');
+    rect(114, 58, 28, 2, '#8a93a0');
   }
 
   // ───────── 손님 ─────────
@@ -211,7 +247,7 @@
   function difficulty() {
     const p = clamp(G.t / SHIFT, 0, 1);
     return {
-      spawnGap: lerp(6, 1.6, p),
+      spawnGap: lerp(5.5, 1.45, p),
       minUnits: 1 + Math.floor(G.t / 45),
       maxUnits: Math.min(6, 2 + Math.floor(G.t / 22)),
       patienceMul: lerp(1.3, 0.62, p),
@@ -219,21 +255,58 @@
     };
   }
 
+  // 손님은 먼저 매장 안(CCTV)을 둘러보며 물건을 고른다. 도둑은 고른 물건을 숨기고 나간다.
+  function planItems(n) {
+    const avail = ITEM_DEFS.slice(0, G.unlocked).map(x => x.id);
+    const items = [];
+    for (let i = 0; i < n; i++) {
+      if (items.length && Math.random() < 0.35) items.push(items[items.length - 1]);
+      else items.push(avail[Math.floor(Math.random() * avail.length)]);
+    }
+    return items;
+  }
+
   function spawnCustomer() {
     const d = difficulty();
     let kind = 'normal';
-    if (G.t > 20) {
+    let thief = false;
+    if (G.t > 12) {
+      const p = lerp(0.14, 0.3, clamp(G.t / SHIFT, 0, 1));
+      thief = !G.firstThief || Math.random() < p;
+      if (thief) G.firstThief = true;
+    }
+    if (!thief && G.t > 20) {
       const r = Math.random();
       if (r < 0.15) kind = 'rush';
       else if (r < 0.25) kind = 'regular';
     }
+    const n = thief ? 1 + Math.floor(Math.random() * 2) : Math.floor(rnd(d.minUnits, d.maxUnits + 1));
+    const items = planItems(n);
+    const stops = [];
+    for (const it of items) {
+      const last = stops[stops.length - 1];
+      if (last && last.item === it) last.count++;
+      else stops.push({ item: it, count: 1, x: Math.round(rnd(CCTV.x + 10, CCTV.x + CCTV.w - 22)) });
+    }
+    if (thief) stops.length = 1;
+    const br = {
+      kind, thief, sprites: makeCustomerSprites(kind), x: CCTV.x + CCTV.w + 8, tx: stops[0].x,
+      speed: lerp(30, 42, clamp(G.t / SHIFT, 0, 1)), stops, idx: 0, picked: [], holding: null,
+      state: 'walk', timer: 0, face: 'normal', walkT: 0, pocketed: false,
+    };
+    G.browsers.push(br);
+    Sound.door();
+  }
+
+  function joinQueue(br) {
+    const d = difficulty();
+    const kind = br.kind;
     const c = {
-      kind, sprites: makeCustomerSprites(kind), x: DOOR_X, tx: DOOR_X, face: 'normal',
+      kind, sprites: br.sprites, x: DOOR_X, tx: DOOR_X, face: 'normal', planned: br.picked,
       walkT: 0, order: null, linePatience: d.linePatience * (kind === 'rush' ? 0.7 : kind === 'regular' ? 1.3 : 1),
       lineMax: 0, leaving: false, happy: false, fade: 1, bubbleIn: 0,
     };
     c.lineMax = c.linePatience;
-    Sound.door();
     if (G.queue.length >= SLOTS.length) {
       // 줄이 꽉 참 → 그냥 나감
       c.face = 'angry';
@@ -254,13 +327,8 @@
 
   function makeOrder(c) {
     const d = difficulty();
-    const n = Math.floor(rnd(d.minUnits, d.maxUnits + 1));
-    const avail = ITEM_DEFS.slice(0, G.unlocked).map(x => x.id);
-    const items = [];
-    for (let i = 0; i < n; i++) {
-      if (items.length && Math.random() < 0.35) items.push(items[items.length - 1]);
-      else items.push(avail[Math.floor(Math.random() * avail.length)]);
-    }
+    const items = c.planned && c.planned.length ? c.planned.slice() : planItems(1);
+    const n = items.length;
     const orderIdx = id => ITEM_DEFS.findIndex(x => x.id === id);
     items.sort((a, z) => orderIdx(a) - orderIdx(z));
     const kindMul = c.kind === 'rush' ? 0.65 : c.kind === 'regular' ? 1.4 : 1;
@@ -291,6 +359,100 @@
 
   function showBanner(msg, color = '#ffd84d', dur = 1.6) {
     G.banner = { msg, color, t: dur, dur };
+  }
+
+  function updateBrowsers(dt) {
+    const exitX = CCTV.x + CCTV.w + 8;
+    for (const br of G.browsers.slice()) {
+      if (br.state === 'caught') {
+        br.timer -= dt;
+        if (br.timer <= 0) G.browsers.splice(G.browsers.indexOf(br), 1);
+        continue;
+      }
+      if (Math.abs(br.tx - br.x) > 0.5) {
+        br.x += Math.sign(br.tx - br.x) * Math.min(br.speed * dt, Math.abs(br.tx - br.x));
+        br.walkT += dt;
+        continue;
+      }
+      br.x = br.tx;
+      if (br.state === 'walk') {
+        br.state = 'browse';
+        br.timer = rnd(0.6, 1.1);
+      } else if (br.state === 'browse') {
+        br.timer -= dt;
+        if (br.timer > 0) continue;
+        const st = br.stops[br.idx++];
+        for (let k = 0; k < st.count; k++) br.picked.push(st.item);
+        br.holding = st.item;
+        if (br.idx < br.stops.length) {
+          br.state = 'walk';
+          br.tx = br.stops[br.idx].x;
+        } else if (br.thief) {
+          br.state = 'pocket';
+          br.timer = 0.8;
+        } else {
+          br.state = 'out';
+          br.tx = exitX;
+        }
+      } else if (br.state === 'pocket') {
+        br.timer -= dt;
+        if (br.timer < 0.4 && br.holding) {
+          br.holding = null;
+          br.pocketed = true;
+          br.face = 'sly';
+          G.floaters.push({ text: '슬쩍!', x: clamp(br.x, 12, W - 12), y: CCTV.y + 6, life: 0.8, color: '#ffffff', size: 6, bold: true });
+          if (!G.thiefTold) {
+            G.thiefTold = true;
+            showBanner('물건을 숨겼어요! CCTV에서 눌러 잡아요', '#ff8f8f', 2.4);
+          }
+        }
+        if (br.timer <= 0) {
+          br.state = 'out';
+          br.tx = exitX;
+          br.speed *= 1.25;
+        }
+      } else if (br.state === 'out') {
+        G.browsers.splice(G.browsers.indexOf(br), 1);
+        if (br.thief) {
+          G.stolen++;
+          loseHeart('도둑맞았어요!');
+          if (G.state !== 'play') return;
+        } else {
+          Sound.door();
+          joinQueue(br);
+          if (G.state !== 'play') return;
+        }
+      }
+    }
+  }
+
+  function accuse(br) {
+    if (G.state !== 'play' || !br || br.state === 'caught') return;
+    if (br.thief && br.pocketed) {
+      br.state = 'caught';
+      br.timer = 0.9;
+      br.face = 'angry';
+      G.caught++;
+      G.score += 50;
+      Sound.bonus();
+      G.floaters.push({ text: '잡았다! +50', x: clamp(br.x, 24, W - 24), y: CCTV.y + 10, life: 1, color: '#ffd84d', size: 7, bold: true });
+    } else {
+      G.score = Math.max(0, G.score - 20);
+      G.combo = 0;
+      G.shake = Math.max(G.shake, 0.2);
+      Sound.wrong();
+      G.floaters.push({ text: '억울해요! -20', x: clamp(br.x, 24, W - 24), y: CCTV.y + 10, life: 1, color: '#ff6b6b', size: 7, bold: true });
+    }
+  }
+
+  function tapCctv(p) {
+    let best = null, bd = 11;
+    for (const br of G.browsers) {
+      if (br.state === 'caught') continue;
+      const d = Math.abs(p.x - br.x);
+      if (d < bd || (best && d === bd && br.pocketed)) { best = br; bd = d; }
+    }
+    if (best) accuse(best);
   }
 
   // ───────── 상품 누르기 ─────────
@@ -369,7 +531,8 @@
     G.round++;
     Object.assign(G, {
       state: 'play', t: 0, score: 0, hearts: MAX_HEARTS, combo: 0, bestCombo: 0, served: 0, lost: 0,
-      queue: [], leaving: [], spawnT: 1, unlocked: 4, fly: [], floaters: [], coins: [],
+      queue: [], leaving: [], browsers: [], spawnT: 1, unlocked: 4, fly: [], floaters: [], coins: [],
+      caught: 0, stolen: 0, firstThief: false, thiefTold: false,
       banner: null, shake: 0, flash: {}, newBest: false, cleared: false, endT: 0,
     });
     showBanner('밤 10시, 근무 시작!', '#7de0c6', 1.4);
@@ -443,6 +606,8 @@
       const d = difficulty();
       G.spawnT = d.spawnGap * rnd(0.8, 1.2);
     }
+    updateBrowsers(dt);
+    if (G.state !== 'play') return;
 
     // 인내심
     G.queue.slice().forEach((c, i) => {
@@ -652,16 +817,17 @@
     const by = gy + 14;
     button(22, by, 100, 22, '알바 시작', startGame, '#ffd84d', '#3a2e44', 11);
     text('손님 말풍선 속 상품을 아래 버튼으로 눌러요', W / 2, by + 34, 6, '#e8e0f0', 'center', { maxW: W - 10 });
-    text('밤 10시부터 아침 6시까지 버티면 퇴근!', W / 2, by + 44, 6, '#e8e0f0', 'center', { maxW: W - 10 });
-    text('최고 매출  ' + G.best.toLocaleString('ko-KR'), W / 2, by + 58, 7, '#ffd84d', 'center', { bold: true });
+    text('물건을 몰래 숨긴 손님은 CCTV에서 눌러 잡기!', W / 2, by + 44, 6, '#ff9f9f', 'center', { maxW: W - 10 });
+    text('밤 10시부터 아침 6시까지 버티면 퇴근!', W / 2, by + 54, 6, '#e8e0f0', 'center', { maxW: W - 10 });
+    text('최고 매출  ' + G.best.toLocaleString('ko-KR'), W / 2, by + 65, 7, '#ffd84d', 'center', { bold: true });
     if (window.Ranking && Ranking.enabled) {
-      button(14, by + 68, 56, 14, '전체 순위', () => Ranking.open(), '#7de0c6', '#1b4f4a', 7);
-      button(74, by + 68, 56, 14, Sound.muted ? '소리 끔' : '소리 켬', () => { Sound.toggle(); }, '#4b405a', '#ffffff', 7);
+      button(14, by + 73, 56, 14, '전체 순위', () => Ranking.open(), '#7de0c6', '#1b4f4a', 7);
+      button(74, by + 73, 56, 14, Sound.muted ? '소리 끔' : '소리 켬', () => { Sound.toggle(); }, '#4b405a', '#ffffff', 7);
     } else {
-      button(44, by + 68, 56, 14, Sound.muted ? '소리 끔' : '소리 켬', () => { Sound.toggle(); }, '#4b405a', '#ffffff', 7);
+      button(44, by + 73, 56, 14, Sound.muted ? '소리 끔' : '소리 켬', () => { Sound.toggle(); }, '#4b405a', '#ffffff', 7);
     }
-    text('개인정보처리방침', W / 2, by + 90, 5.5, '#8a7f98', 'center');
-    uiBtns.push({ x: W / 2 - 25, y: by + 85, w: 50, h: 10, act: () => { location.href = 'privacy.html'; } });
+    text('개인정보처리방침', W / 2, by + 93, 5.5, '#8a7f98', 'center');
+    uiBtns.push({ x: W / 2 - 25, y: by + 88, w: 50, h: 10, act: () => { location.href = 'privacy.html'; } });
   }
 
   function rankTitle(score) {
@@ -679,7 +845,7 @@
     b.globalAlpha = 1;
     if (G.endT < 0.3) return;
     const rk = window.Ranking && Ranking.enabled;
-    const pw = 124, ph = rk ? 172 : 150, px = (W - pw) / 2, py = Math.max(18, (H - ph) / 2 - 10);
+    const pw = 124, ph = rk ? 185 : 163, px = (W - pw) / 2, py = Math.max(18, (H - ph) / 2 - 10);
     box(px, py, pw, ph, '#f6efe0', OUTLINE, '#000');
     rect(px + 1, py + 1, pw - 2, 22, G.cleared ? '#26a69a' : '#e2453c');
     text(G.cleared ? '퇴근 성공!' : '오늘 근무 끝…', W / 2, py + 12.5, 11, '#fff', 'center', { bold: true });
@@ -687,6 +853,7 @@
       ['오늘 매출', G.score.toLocaleString('ko-KR')],
       ['받은 손님', G.served + '명'],
       ['최고 연속', G.bestCombo + '번'],
+      ['잡은 도둑', G.caught + '명' + (G.stolen ? ` (놓침 ${G.stolen})` : '')],
     ];
     if (G.cleared) rows.push(['퇴근 보너스', '+' + G.clearBonus]);
     else rows.push(['근무 시간', clockText() + '까지']);
@@ -785,6 +952,10 @@
     for (const u of uiBtns.slice().reverse()) {
       if (inside(p, u)) { u.act(); return; }
     }
+    if (G.state === 'play' && p.y >= CCTV.y - 2 && p.y < CCTV.y + CCTV.h + 2) {
+      tapCctv(p);
+      return;
+    }
     if (G.state === 'play') {
       const s = shelfBtns.find(q => inside(p, { x: q.x - 1, y: q.y - 1, w: q.w + 2, h: q.h + 3 }));
       if (s) {
@@ -837,7 +1008,7 @@
 
   // 자동 점검용(게임에는 영향 없음)
   window.__pm = {
-    G, startGame, tapItem, update,
+    G, startGame, tapItem, update, accuse,
     setManual(v) { manual = v; },
     step(sec, h = 1 / 60) { for (let t = 0; t < sec; t += h) update(h); },
   };

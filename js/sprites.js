@@ -402,6 +402,13 @@ function bakeCustomer(look, face) {
     grid[6][4] = 'S'; grid[6][9] = 'S';
     grid[9][5] = 'M'; grid[9][8] = 'M';
     grid[10][6] = 'm'; grid[10][7] = 'm';
+  } else if (face === 'sly') {
+    // 곁눈질 + 씩 웃음
+    for (const y of [6, 7]) {
+      grid[y][4] = look.glasses && y === 6 ? 'G' : 'S'; grid[y][5] = 'E';
+      grid[y][9] = look.glasses && y === 6 ? 'G' : 'S'; grid[y][10] = 'E';
+    }
+    grid[9][6] = 'S'; grid[9][7] = 'M'; grid[9][8] = 'M'; grid[8][9] = 'M';
   } else if (face === 'angry') {
     grid[5][3] = 'E'; grid[5][4] = 'E'; grid[5][9] = 'E'; grid[5][10] = 'E';
     grid[4][3] = look.style === 'gray' || look.style === 'cap' ? grid[4][3] : grid[4][3];
@@ -438,5 +445,6 @@ function makeCustomerSprites(kind) {
     normal: bakeCustomer(look, 'normal'),
     happy: bakeCustomer(look, 'happy'),
     angry: bakeCustomer(look, 'angry'),
+    sly: bakeCustomer(look, 'sly'),
   };
 }
