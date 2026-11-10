@@ -32,7 +32,7 @@
     queue: [], leaving: [], spawnT: 1, unlocked: 4,
     fly: [], floaters: [], coins: [], banner: null, shake: 0, flash: {},
     door: 0, best: parseInt(store.get('pixelmart.best', '0'), 10) || 0,
-    newBest: false, cleared: false, endT: 0, anim: 0,
+    newBest: false, cleared: false, endT: 0, anim: 0, round: 0,
   };
 
   // ───────── 화면 크기 ─────────
@@ -365,6 +365,8 @@
 
   // ───────── 진행 ─────────
   function startGame() {
+    if (window.Ranking) Ranking.close();
+    G.round++;
     Object.assign(G, {
       state: 'play', t: 0, score: 0, hearts: MAX_HEARTS, combo: 0, bestCombo: 0, served: 0, lost: 0,
       queue: [], leaving: [], spawnT: 1, unlocked: 4, fly: [], floaters: [], coins: [],
@@ -652,7 +654,14 @@
     text('손님 말풍선 속 상품을 아래 버튼으로 눌러요', W / 2, by + 34, 6, '#e8e0f0', 'center', { maxW: W - 10 });
     text('밤 10시부터 아침 6시까지 버티면 퇴근!', W / 2, by + 44, 6, '#e8e0f0', 'center', { maxW: W - 10 });
     text('최고 매출  ' + G.best.toLocaleString('ko-KR'), W / 2, by + 58, 7, '#ffd84d', 'center', { bold: true });
-    button(44, by + 68, 56, 14, Sound.muted ? '소리 끔' : '소리 켬', () => { Sound.toggle(); }, '#4b405a', '#ffffff', 7);
+    if (window.Ranking && Ranking.enabled) {
+      button(14, by + 68, 56, 14, '전체 순위', () => Ranking.open(), '#7de0c6', '#1b4f4a', 7);
+      button(74, by + 68, 56, 14, Sound.muted ? '소리 끔' : '소리 켬', () => { Sound.toggle(); }, '#4b405a', '#ffffff', 7);
+    } else {
+      button(44, by + 68, 56, 14, Sound.muted ? '소리 끔' : '소리 켬', () => { Sound.toggle(); }, '#4b405a', '#ffffff', 7);
+    }
+    text('개인정보처리방침', W / 2, by + 90, 5.5, '#8a7f98', 'center');
+    uiBtns.push({ x: W / 2 - 25, y: by + 85, w: 50, h: 10, act: () => { location.href = 'privacy.html'; } });
   }
 
   function rankTitle(score) {
@@ -669,7 +678,8 @@
     rect(0, 0, W, H, '#0d0a14');
     b.globalAlpha = 1;
     if (G.endT < 0.3) return;
-    const pw = 124, ph = 150, px = (W - pw) / 2, py = Math.max(18, (H - ph) / 2 - 10);
+    const rk = window.Ranking && Ranking.enabled;
+    const pw = 124, ph = rk ? 172 : 150, px = (W - pw) / 2, py = Math.max(18, (H - ph) / 2 - 10);
     box(px, py, pw, ph, '#f6efe0', OUTLINE, '#000');
     rect(px + 1, py + 1, pw - 2, 22, G.cleared ? '#26a69a' : '#e2453c');
     text(G.cleared ? '퇴근 성공!' : '오늘 근무 끝…', W / 2, py + 12.5, 11, '#fff', 'center', { bold: true });
@@ -689,6 +699,11 @@
     rect(px + 8, ry - 4, pw - 16, 1, '#d9cdb5');
     text('칭호: ' + rankTitle(G.score), W / 2, ry + 5, 8, '#26a69a', 'center', { bold: true });
     text((G.newBest ? '새 기록! ' : '최고 매출 ') + G.best.toLocaleString('ko-KR'), W / 2, ry + 17, 7, G.newBest ? '#e2453c' : '#6b5f7a', 'center', { bold: G.newBest });
+    if (rk) {
+      const done = Ranking.alreadySubmitted(G.round);
+      const label = G.score > 0 && !done ? '전체 순위에 올리기' : '전체 순위 보기';
+      button(px + 8, py + ph - 48, pw - 16, 18, label, () => Ranking.open({ round: G.round, score: G.score }), '#7de0c6', '#1b4f4a', 8);
+    }
     button(px + 8, py + ph - 26, 58, 18, '다시 하기', startGame, '#ffd84d', '#3a2e44', 8);
     button(px + 70, py + ph - 26, 46, 18, '처음으로', () => { G.state = 'title'; G.queue = []; G.leaving = []; }, '#4b405a', '#fff', 7);
   }
@@ -779,6 +794,7 @@
     }
   });
   window.addEventListener('keydown', (e) => {
+    if (window.Ranking && Ranking.isOpen) return;
     if (G.state === 'play') {
       const n = parseInt(e.key, 10);
       if (n >= 1 && n <= 8) tapItem(ITEM_DEFS[n - 1].id);
